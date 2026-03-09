@@ -1,8 +1,7 @@
 # ⚡ Kairos
 ### Real-time AI. Cross-verified. Always current.
 
-> Built by a 12-year-old in Thrissur, Kerala, India.
-> Beats ChatGPT on accuracy. Beats Perplexity on features. Costs ₹0 to run.
+> Beats ChatGPT on accuracy. Beats Perplexity on features. Costs NOTHING but a PC to run.
 
 ![Python](https://img.shields.io/badge/Python-3.11-blue)
 ![License](https://img.shields.io/badge/License-MIT-green)

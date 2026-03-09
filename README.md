@@ -118,8 +118,6 @@ Cited Answer
 
 ```
 Kairos/
-├── .env                  # API keys (never commit)
-├── .env.example          # Template
 ├── .gitignore
 ├── main.py               # Entry point
 ├── requirements.txt
@@ -170,9 +168,7 @@ pip install google-genai chromadb feedparser ddgs gradio python-dotenv aiohttp n
 
 ### Step 3 — Configure
 
-```bash
-cp .env.example .env
-```
+Create a file called .env in the folder
 
 Edit `.env`:
 ```
@@ -194,18 +190,20 @@ Open browser: `http://localhost:7860`
 
 To use Kairos on any device in your home network:
 
-In `ui/interface.py`, change:
+In `main.py`, change:
 ```python
-demo.launch()
+share=false
 ```
 to:
 ```python
-demo.launch(server_name="0.0.0.0", server_port=7860)
+share=true
 ```
 
 Find your PC's IP:
+
+Windows:
 ```bash
-hostname -I
+ipconfig
 ```
 
 Everyone on the same WiFi can now access Kairos at:
@@ -283,8 +281,6 @@ MIT License — free to use, modify, and distribute.
 ---
 
 ## Author
-
-Built by **Joshua**, age 12, Thrissur, Kerala, India.
 
 > *"The right answer at the right moment."*
 

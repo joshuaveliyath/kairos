@@ -1,0 +1,9 @@
+google-genai
+chromadb
+feedparser
+duckduckgo-search
+gradio
+python-dotenv
+aiohttp
+newsapi-python
+requests

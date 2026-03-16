@@ -163,7 +163,7 @@ Kairos/
 ```bash
 git clone https://github.com/YOUR_USERNAME/kairos.git
 cd kairos
-pip install google-genai chromadb feedparser ddgs gradio python-dotenv aiohttp newsapi-python requests
+pip install gradio python-dotenv google-genai chromadb newsapi-python feedparser duckduckgo-search
 ```
 
 ### Step 3 — Configure

@@ -2,12 +2,6 @@
 
 Kairos is a high-performance, real-time AI teaching and research assistant powered by **Gemini 3.1 Flash Lite Preview**, designed for cross-verified information retrieval, multimodal analysis, and personalized learning.
 
-![Python](https://img.shields.io/badge/Python-3.11-blue)
-![License](https://img.shields.io/badge/License-MIT-green)
-![Cost](https://img.shields.io/badge/Cost-₹0-brightgreen)
-![Size](https://img.shields.io/badge/Size-~150KB-orange)
-![Model](https://img.shields.io/badge/Model-Gemini%203.1%20Flash%20Preview-purple)
-
 ## 🚀 Key Features
 
 ### 🧠 Intelligent Processing

@@ -200,7 +200,7 @@ Output only the style description."""
     except:
         return "Language: English. Tone: Standard."
 
-async def kairos_query(question: str, files: list = None, complexity: str = "Standard", username: str = "default") -> tuple[str, list]:
+async def kairos_query(question: str, files: list = None, complexity: str = "Standard", username: str = "default"):
     files = files or []
     
     # Step 1: Resolve pronouns 💀
@@ -209,7 +209,8 @@ async def kairos_query(question: str, files: list = None, complexity: str = "Sta
     # Step 2: Cache check on resolved question 😭
     cached = check_cache(resolved_question, username)
     if cached:
-        return f"⚡ **Cached:**\n\n{cached}", []
+        yield f"⚡ **Cached:**\n\n{cached}", []
+        return
 
     print(f"🔍 Fetching: {resolved_question}")
 
@@ -239,59 +240,57 @@ async def kairos_query(question: str, files: list = None, complexity: str = "Sta
         history
     )
     print(f"📈 Expanded Queries: {search_queries}")
+    yield "🔍 **Searching for information...**", []
 
     # Step 6: Fetch all sources in parallel 😭
-    rss_coros = [fetch_rss(q) for q in search_queries]
-    search_coros = [
-        asyncio.to_thread(fetch_all_search, q)
-        for q in search_queries
-    ]
-    news_coros = [
-        asyncio.to_thread(fetch_news, q)
-        for q in search_queries
-    ]
+    # Combine all fetching tasks into a dict to track them
+    fetching_map = {}
+    for q in search_queries:
+        fetching_map[asyncio.create_task(fetch_rss(q))] = f"RSS Feeds for '{q}'"
+        fetching_map[asyncio.create_task(asyncio.to_thread(fetch_all_search, q))] = f"DuckDuckGo for '{q}'"
+        fetching_map[asyncio.create_task(asyncio.to_thread(fetch_news, q))] = f"NewsAPI for '{q}'"
+
+    yield f"🌐 **Launching {len(fetching_map)} parallel search threads...**", []
+
+    all_results = []
+    pending = list(fetching_map.keys())
+    completed_count = 0
+    total_tasks = len(fetching_map)
 
     try:
-        rss_results_list = await asyncio.wait_for(
-            asyncio.gather(*rss_coros), timeout=6.0
-        )
-        rss_results = [
-            item for sublist in rss_results_list
-            for item in sublist
-        ]
-    except asyncio.TimeoutError:
-        print("⚠️ RSS fetch timed out")
-        rss_results = []
-
-    try:
-        search_results_list = await asyncio.wait_for(
-            asyncio.gather(*search_coros), timeout=8.0
-        )
-        search_results = [
-            item for sublist in search_results_list
-            for item in sublist
-        ]
-    except asyncio.TimeoutError:
-        print("⚠️ Search fetch timed out")
-        search_results = []
-
-    try:
-        news_results_list = await asyncio.wait_for(
-            asyncio.gather(*news_coros), timeout=6.0
-        )
-        news_results = [
-            item for sublist in news_results_list
-            for item in sublist
-        ]
-    except asyncio.TimeoutError:
-        print("⚠️ News fetch timed out")
-        news_results = []
-
-    all_results = rss_results + search_results + news_results
+        # Use wait with a timeout. As each task completes, we yield an update.
+        while pending:
+            done, pending = await asyncio.wait(
+                pending, 
+                timeout=10.0, 
+                return_when=asyncio.FIRST_COMPLETED
+            )
+            
+            if not done: # Timeout
+                print("⚠️ Some data fetching tasks timed out")
+                for p in pending: p.cancel()
+                break
+                
+            for task in done:
+                completed_count += 1
+                source_desc = fetching_map.get(task, "Unknown source")
+                try:
+                    res = await task
+                    if isinstance(res, list):
+                        all_results.extend(res)
+                        # Yield status update as tasks complete
+                        yield f"📡 **[{completed_count}/{total_tasks}]** Parsed data from **{source_desc}**...", []
+                except Exception as e:
+                    print(f"⚠️ Task {source_desc} failed: {e}")
+                    
+    except Exception as e:
+        print(f"❌ Critical fetching error: {e}")
+        for p in pending: p.cancel()
     
     # 💀 Tier 3: Confidence and Source Quality
     verified_results, confidence_score = verify_results(all_results)
     context = format_context(verified_results)
+    yield f"🧠 **Processing {len(verified_results)} verified data points (Confidence: {confidence_score}%)...**", []
     
     # 💀 Tier 6: Load user memory
     user_prefs = get_user_memory(username)
@@ -399,72 +398,31 @@ async def kairos_query(question: str, files: list = None, complexity: str = "Sta
         except Exception as e:
             print(f"File Upload Error: {e}")
             
+    full_text = f"🌩️ **Kairos Confidence: {confidence_score}%**\n\n"
+    fetched_source_names = list(set([r.get('source') for r in all_results if r.get('source')]))
+
     try:
-        response = await asyncio.to_thread(
-            client.models.generate_content,
+        response_stream = await asyncio.to_thread(
+            client.models.generate_content_stream,
             model="gemini-2.5-flash",
             contents=contents_body,
             config=config
         )
-    except ResourceExhausted:
-        return (
-            "⚡ **Kairos is taking a breather**\n\n"
-            "Too many questions fired today 😭\n\n"
-            "Come back in a few minutes and "
-            "Kairos will be ready 🔥"
-        ), []
-    except Exception as e:
-        return (
-            f"⚠️ **Something went wrong**\n\n"
-            f"Error: `{str(e)}`\n\n"
-            "Try again in a moment 💀"
-        ), []
-
-    answer = response.text
-    
-    # 🧼 Clean and Polish (Tier 9 Fixes)
-    answer = re.sub(r"\[Image\]", "", answer) # Remove hallucinated placeholders
-    answer = answer.strip() # Remove leading/trailing whitespace
-    answer = re.sub(r'\n{3,}', '\n\n', answer) # Normalize excessive spacing
-
-    # 💀 Tier 3: Answer Versioning / Diffing
-    version_note = ""
-    # Retrieve the last known answer to see if there's a big change (e.g., score changed)
-    # We can use our get_recent_history but filter for the same exact question
-    try:
-        from core.memory import collection
-        recent = collection.query(query_texts=[resolved_question], n_results=1)
-        if recent['documents'] and recent['documents'][0]:
-            last_ans = recent['documents'][0][0]
-            # Simple heuristic: if length or words changed significantly, flag it
-            old_words = set(last_ans.lower().split())
-            new_words = set(answer.lower().split())
-            if len(old_words) > 0 and len(new_words) > 0:
-                overlap = len(old_words & new_words) / max(len(old_words), len(new_words))
-                if overlap < 0.7:  # 30% difference in vocabulary represents a meaningful update
-                    version_note = "\n\n🔔 *Live Update: Information has changed since your last check.*"
-    except Exception:
-        pass
-
-    # Step 8: Word limit 😭
-    MAX_WORDS = 500
-    words_match = list(re.finditer(r'\S+', answer))
-    if len(words_match) > MAX_WORDS:
-        cutoff = words_match[MAX_WORDS - 1].end()
-        answer = (
-            answer[:cutoff] +
-            "...\n\n*(Note: Answer trimmed to respect "
-            "length limit)*"
-        )
         
-    # Append the confidence and version tags natively to the response
-    final_answer = f"🌩️ **Kairos Confidence: {confidence_score}%**\n\n{answer}{version_note}"
+        for chunk in response_stream:
+            if chunk.text:
+                full_text += chunk.text
+                yield full_text, fetched_source_names
+
+    except ResourceExhausted:
+        yield "⚡ **Kairos is taking a breather**\n\nToo many questions today.", []
+        return
+    except Exception as e:
+        yield f"⚠️ **Error:** `{str(e)}`", []
+        return
 
     # Step 9: Store 💀
-    store_result(resolved_question, final_answer, username)
-    
-    fetched_source_names = list(set([r.get('source') for r in all_results if r.get('source')]))
-    return final_answer, fetched_source_names
+    store_result(resolved_question, full_text, username)
 
 async def fact_check_text(text: str, username: str = "default") -> str:
     """💀 Tier 5: Fact Checker Mode. Analyzes text sentence by sentence."""

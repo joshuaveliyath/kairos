@@ -7,23 +7,25 @@ collection = client.get_or_create_collection(
     "kairos_memory"
 )
 
-def store_result(question: str, answer: str):
+def store_result(question: str, answer: str, username: str = "default"):
     try:
         collection.add(
             documents=[answer],
             metadatas=[{
                 "question": question,
+                "username": username,
                 "timestamp": str(datetime.now())
             }],
-            ids=[f"q_{datetime.now().timestamp()}"]
+            ids=[f"q_{username}_{datetime.now().timestamp()}"]
         )
     except Exception as e:
         print(f"Storage Error: {e}")
 
-def check_cache(question: str) -> str | None:
+def check_cache(question: str, username: str = "default") -> str | None:
     try:
         results = collection.query(
             query_texts=[question],
+            where={"username": username},
             n_results=1
         )
 
@@ -50,7 +52,7 @@ def check_cache(question: str) -> str | None:
 
                 print(f"🔄 Cache similarity: {similarity:.2f}")
 
-                if similarity >= 0.4:
+                if similarity >= 0.9:
                     print(f"⚡ Cache hit! ({age}s old)")
                     return results['documents'][0][0]
                 else:
@@ -61,9 +63,10 @@ def check_cache(question: str) -> str | None:
         pass
     return None
 
-def get_recent_history(limit: int = 3) -> str:
+def get_recent_history(username: str = "default", limit: int = 3) -> str:
     try:
         results = collection.get(
+            where={"username": username},
             limit=limit,
             include=['documents', 'metadatas']
         )
@@ -94,7 +97,7 @@ def get_recent_history(limit: int = 3) -> str:
         print(f"Memory Error: {e}")
         return ""
 
-def get_last_entity() -> str:
+def get_last_entity(username: str = "default") -> str:
     """
     Extract the most recent named entity 💀
     from conversation history
@@ -102,6 +105,7 @@ def get_last_entity() -> str:
     """
     try:
         results = collection.get(
+            where={"username": username},
             limit=5,
             include=['metadatas']
         )
@@ -194,7 +198,32 @@ def resolve_pronouns(question: str) -> str:
     if not has_pronoun:
         return question  # no pronouns, return as is 😭
 
-    entity = get_last_entity()
+    # Extract username if available via context or passed as arg?
+    # In processor, it will be passed. Let's add arg.
+    # But resolve_pronouns only takes question. Let's fix.
+    return question
+
+def resolve_pronouns(question: str, username: str = "default") -> str:
+    """
+    Replace pronouns with actual entity 💀
+    "What did he announce?" → 
+    "What did Elon Musk announce?"
+    """
+    pronouns = [
+        "he", "she", "they", "him", "her",
+        "his", "their", "it"
+    ]
+
+    q_lower = question.lower()
+    has_pronoun = any(
+        f" {p} " in f" {q_lower} "
+        for p in pronouns
+    )
+
+    if not has_pronoun:
+        return question  # no pronouns, return as is 😭
+
+    entity = get_last_entity(username)
 
     if not entity:
         return question  # no entity found, return as is 💀
@@ -210,3 +239,104 @@ def resolve_pronouns(question: str) -> str:
 
     print(f"🔗 Resolved: '{question}' → '{resolved}'")
     return resolved
+
+# ─────────────────────────────────────────────
+# 💀 TIER 6: Persistent User Memory
+# ─────────────────────────────────────────────
+_user_profile_collection = client.get_or_create_collection("kairos_user_profile")
+
+def get_user_memory(username: str = "default") -> dict:
+    """Retrieve user preferences stored in ChromaDB."""
+    try:
+        r = _user_profile_collection.get(ids=[f"user_prefs_{username}"])
+        if r['documents'] and r['documents'][0]:
+            import json
+            return json.loads(r['documents'][0])
+    except Exception:
+        pass
+    return {}
+
+def update_user_memory(username: str, key: str, value: str):
+    """Update a single user preference field."""
+    try:
+        import json
+        prefs = get_user_memory(username)
+        prefs[key] = value
+        _user_profile_collection.upsert(
+            documents=[json.dumps(prefs)],
+            metadatas=[{"updated": str(datetime.now()), "username": username}],
+            ids=[f"user_prefs_{username}"]
+        )
+        print(f"💾 User pref updated for {username}: {key} = {value}")
+    except Exception as e:
+        print(f"User Memory Error: {e}")
+
+# ─────────────────────────────────────────────
+# 💀 TIER 6: Source Reputation System (base 50)
+# ─────────────────────────────────────────────
+_reputation_collection = client.get_or_create_collection("kairos_source_reputation")
+
+def get_source_reputation(source_name: str) -> int:
+    """Get reputation score for a source. Returns a value 0-100 (base 50)."""
+    try:
+        r = _reputation_collection.get(ids=[f"src_{source_name}"])
+        if r['documents'] and r['documents'][0]:
+            return int(r['documents'][0])
+    except Exception:
+        pass
+    return 50  # default base score
+
+def update_source_reputation(source_name: str, delta: int):
+    """Adjust source reputation by +/- delta. Clamped to 0-100."""
+    try:
+        current = get_source_reputation(source_name)
+        new_score = max(0, min(100, current + delta))
+        _reputation_collection.upsert(
+            documents=[str(new_score)],
+            metadatas=[{
+                "source": source_name,
+                "last_updated": str(datetime.now())
+            }],
+            ids=[f"src_{source_name}"]
+        )
+        arrow = "📈" if delta > 0 else "📉"
+        print(f"{arrow} {source_name} reputation: {current} → {new_score}")
+        return new_score
+    except Exception as e:
+        print(f"Reputation Error: {e}")
+        return 50
+
+# ─────────────────────────────────────────────
+# 💀 TIER 6: Proactive Alert Watching System
+# ─────────────────────────────────────────────
+_alerts_collection = client.get_or_create_collection("kairos_watch_topics")
+
+def add_watch_topic(topic: str, username: str = "default"):
+    """Register a topic for proactive alert watching."""
+    try:
+        safe_id = re.sub(r'[^a-zA-Z0-9_-]', '_', topic[:50])
+        _alerts_collection.upsert(
+            documents=[topic],
+            metadatas=[{"added": str(datetime.now()), "last_checked": "", "username": username}],
+            ids=[f"watch_{username}_{safe_id}"]
+        )
+        print(f"👁️ Watching for {username}: {topic}")
+    except Exception as e:
+        print(f"Watch Error: {e}")
+
+def get_watch_topics(username: str = "default") -> list[str]:
+    """Return all registered watch topics."""
+    try:
+        r = _alerts_collection.get(where={"username": username}, include=['documents'])
+        return r['documents'] if r['documents'] else []
+    except Exception:
+        return []
+
+def remove_watch_topic(topic: str, username: str = "default"):
+    """Remove a topic from the watch list."""
+    try:
+        safe_id = re.sub(r'[^a-zA-Z0-9_-]', '_', topic[:50])
+        _alerts_collection.delete(ids=[f"watch_{username}_{safe_id}"])
+        print(f"🗑️ Unwatched for {username}: {topic}")
+    except Exception as e:
+        print(f"Unwatch Error: {e}")

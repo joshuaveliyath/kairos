@@ -19,7 +19,7 @@ if __name__ == "__main__":
         server_port=7860,
         show_error=True,
         share=True,
-        auth=[("Joshua", "jonathan@123"), ("Jomesh", "Chinnu@123"), ("Ann", "Jomesh@123")], # 💀 Tier 8: Multi-User Support
+        auth=[("TEST", "TEST@123"), ("TESTER", "TESTER@123"), ("TESTING", "TESTING@123")], # 💀 Tier 8: Multi-User Support
         theme=gr.themes.Soft(),
         css="""
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
